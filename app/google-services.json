@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "691590322516",
+    "project_id": "anti-rape-ebdbc",
+    "storage_bucket": "anti-rape-ebdbc.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:691590322516:android:e0cdc61ebfe222b9fa10c1",
+        "android_client_info": {
+          "package_name": "com.example.antirapealertapp"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyA8nvQ8BVhysUZOAQEycxAca8rVKjcIwP0"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
