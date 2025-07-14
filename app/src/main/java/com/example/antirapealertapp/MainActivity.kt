@@ -132,13 +132,25 @@ class MainActivity : AppCompatActivity() {
             if (name.isEmpty() || email.isEmpty() || aadhaar.length != 12 || selectedImageUri == null) {
                 Toast.makeText(this, "Please fill all fields correctly", Toast.LENGTH_SHORT).show()
             } else {
-                Toast.makeText(this, "Registered Successfully!", Toast.LENGTH_SHORT).show()
+                val user = User(name, email, aadhaar, selectedImageUri.toString())
+                val database = FirebaseDatabase.getInstance().reference
 
-                // Later: Save to Firebase or Spring Boot backend
+                val key = database.child("users").push().key ?: return@setOnClickListener
+                database.child("users").child(key).setValue(user)
+                    .addOnSuccessListener {
+                        Toast.makeText(this, "✅ Registered & Saved to Firebase!", Toast.LENGTH_SHORT).show()
+                    }
+                    .addOnFailureListener {
+                        Toast.makeText(this, "❌ Failed to save: ${it.message}", Toast.LENGTH_SHORT).show()
+                    }
             }
         }
+
         database = FirebaseDatabase.getInstance()
         getLocationPermission()
+        val intent = Intent(android.provider.Settings.ACTION_ACCESSIBILITY_SETTINGS)
+        startActivity(intent)
+
     }
 
     // Handle image selection result
@@ -163,7 +175,7 @@ class MainActivity : AppCompatActivity() {
 
             volumePressCount++
 
-            if (volumePressCount == 3) {
+            if (volumePressCount == 5) {
                 val timeDiff = currentTime - firstPressTime
                 if (timeDiff <= 5000) { // within 5 seconds
                     // Trigger emergency
