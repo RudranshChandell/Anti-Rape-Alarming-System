@@ -1,7 +1,6 @@
 package com.example.antirapealertapp
 
 import android.Manifest
-import android.view.KeyEvent
 import android.app.Activity
 import android.content.Intent
 import android.content.pm.PackageManager
@@ -15,12 +14,14 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
 import java.io.InputStream
 import com.google.firebase.database.FirebaseDatabase
+import com.google.firebase.storage.FirebaseStorage
+import java.util.UUID
 
 private lateinit var database: FirebaseDatabase
-private var lastLatitude = 0.0
-private var lastLongitude = 0.0
-private var volumePressCount = 0
-private var firstPressTime: Long = 0
+var lastLatitude = 0.0
+var lastLongitude = 0.0
+var volumePressCount = 0
+var firstPressTime: Long = 0
 private val LOCATION_PERMISSION_REQUEST = 2001
 private lateinit var fusedLocationClient: com.google.android.gms.location.FusedLocationProviderClient
 
@@ -40,35 +41,26 @@ class MainActivity : AppCompatActivity() {
     // Request code for image pick
     private val IMAGE_PICK_CODE = 1000
 
-    private fun sendEmergencyAlert() {
-        val name = etName.text.toString()
-        val email = etEmail.text.toString()
-        val aadhaar = etAadhaar.text.toString()
 
-        if (name.isEmpty() || email.isEmpty() || aadhaar.length != 12) {
-            Toast.makeText(this, "Please register properly first", Toast.LENGTH_SHORT).show()
-            return
+    private fun checkAndPromptAccessibilityPermission() {
+        if (!isAccessibilityServiceEnabled()) {
+            Toast.makeText(this, "⚠️ Enable Accessibility Service for emergency trigger.", Toast.LENGTH_LONG).show()
+            val intent = Intent(android.provider.Settings.ACTION_ACCESSIBILITY_SETTINGS)
+            startActivity(intent)
         }
-
-        val alert = mapOf(
-            "name" to name,
-            "email" to email,
-            "aadhaar" to aadhaar,
-            "latitude" to lastLatitude,
-            "longitude" to lastLongitude,
-            "timestamp" to System.currentTimeMillis()
-        )
-
-        val alertRef = database.getReference("alerts").push()
-        alertRef.setValue(alert)
-            .addOnSuccessListener {
-                Toast.makeText(this, "🚨 Alert sent to Firebase!", Toast.LENGTH_SHORT).show()
-            }
-            .addOnFailureListener {
-                Toast.makeText(this, "Failed to send alert", Toast.LENGTH_SHORT).show()
-            }
     }
 
+    private fun isAccessibilityServiceEnabled(): Boolean {
+        val expectedService = "$packageName/${com.example.antirapealertapp.EmergencyAccessibilityService::class.java.name}"
+        val enabledServices = android.provider.Settings.Secure.getString(
+            contentResolver,
+            android.provider.Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES
+        ) ?: return false
+
+        return enabledServices.split(":").any {
+            it.equals(expectedService, ignoreCase = true)
+        }
+    }
 
     private fun getLocationPermission() {
         if (ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION)
@@ -90,23 +82,41 @@ class MainActivity : AppCompatActivity() {
         if (ActivityCompat.checkSelfPermission(
                 this,
                 Manifest.permission.ACCESS_FINE_LOCATION
-            ) == PackageManager.PERMISSION_GRANTED
+            ) != PackageManager.PERMISSION_GRANTED
         ) {
-            fusedLocationClient.lastLocation.addOnSuccessListener { location ->
-                if (location != null) {
-                    lastLatitude = location.latitude
-                    lastLongitude = location.longitude
-                } else {
-                    Toast.makeText(this, "Couldn't fetch location", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        fusedLocationClient.getCurrentLocation(
+            com.google.android.gms.location.Priority.PRIORITY_HIGH_ACCURACY,
+            null
+        ).addOnSuccessListener { location ->
+            if (location != null) {
+                lastLatitude = location.latitude
+                lastLongitude = location.longitude
+
+                val sharedPrefs = getSharedPreferences("user_prefs", MODE_PRIVATE)
+                sharedPrefs.edit().apply {
+                    putFloat("latitude", lastLatitude.toFloat())
+                    putFloat("longitude", lastLongitude.toFloat())
+                    apply()
                 }
+
+                Toast.makeText(this, "📍 Location fetched: $lastLatitude, $lastLongitude", Toast.LENGTH_SHORT).show()
+            } else {
+                Toast.makeText(this, "⚠️ Enable GPS and go outdoors!", Toast.LENGTH_SHORT).show()
             }
+        }.addOnFailureListener {
+            Toast.makeText(this, "❌ Failed to get location", Toast.LENGTH_SHORT).show()
         }
     }
 
-
-
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
+        val sharedPrefs = getSharedPreferences("user_prefs", MODE_PRIVATE)
+        val isRegistered = sharedPrefs.getBoolean("isRegistered", false)
+
         setContentView(R.layout.activity_main)
 
         // Link UI elements
@@ -132,28 +142,52 @@ class MainActivity : AppCompatActivity() {
             if (name.isEmpty() || email.isEmpty() || aadhaar.length != 12 || selectedImageUri == null) {
                 Toast.makeText(this, "Please fill all fields correctly", Toast.LENGTH_SHORT).show()
             } else {
-                val user = User(name, email, aadhaar, selectedImageUri.toString())
-                val database = FirebaseDatabase.getInstance().reference
-
-                val key = database.child("users").push().key ?: return@setOnClickListener
-                database.child("users").child(key).setValue(user)
-                    .addOnSuccessListener {
-                        Toast.makeText(this, "✅ Registered & Saved to Firebase!", Toast.LENGTH_SHORT).show()
-                    }
-                    .addOnFailureListener {
-                        Toast.makeText(this, "❌ Failed to save: ${it.message}", Toast.LENGTH_SHORT).show()
-                    }
+                uploadImageAndSaveUser(name, email, aadhaar)
             }
         }
 
         database = FirebaseDatabase.getInstance()
+
         getLocationPermission()
-        val intent = Intent(android.provider.Settings.ACTION_ACCESSIBILITY_SETTINGS)
-        startActivity(intent)
+
+        if (isRegistered) {
+            checkAndPromptAccessibilityPermission() // 👈 NEW LINE
+            val intent = Intent(this, HelpActivity::class.java)
+            startActivity(intent)
+            finish()
+        }
 
     }
 
-    // Handle image selection result
+    private fun uploadImageAndSaveUser(name: String, email: String, aadhaar: String) {
+        val imageUri = selectedImageUri ?: return
+        val user = User(name, email, aadhaar, imageUri.toString(), lastLatitude, lastLongitude)
+
+        val databaseRef = FirebaseDatabase.getInstance().reference
+        val key = databaseRef.child("users").push().key ?: return
+        databaseRef.child("users").child(key).setValue(user)
+            .addOnSuccessListener {
+                val sharedPrefs = getSharedPreferences("user_prefs", MODE_PRIVATE)
+                sharedPrefs.edit().apply {
+                    putString("name", name)
+                    putString("email", email)
+                    putString("aadhaar", aadhaar)
+                    putString("imageUri", imageUri.toString()) // URI stored directly
+                    putBoolean("isRegistered", true)
+                    apply()
+                }
+                Toast.makeText(this, "✅ Registered Successfully!", Toast.LENGTH_SHORT).show()
+                val intent = Intent(this, HelpActivity::class.java)
+                startActivity(intent)
+                finish()
+            }
+            .addOnFailureListener {
+                Toast.makeText(this, "❌ Failed to save user data", Toast.LENGTH_SHORT).show()
+            }
+    }
+
+
+
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
 
@@ -164,40 +198,6 @@ class MainActivity : AppCompatActivity() {
             ivProfile.setImageBitmap(bitmap)
         }
     }
-
-    override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {
-        if (keyCode == KeyEvent.KEYCODE_VOLUME_DOWN) {
-            val currentTime = System.currentTimeMillis()
-
-            if (volumePressCount == 0) {
-                firstPressTime = currentTime
-            }
-
-            volumePressCount++
-
-            if (volumePressCount == 5) {
-                val timeDiff = currentTime - firstPressTime
-                if (timeDiff <= 5000) { // within 5 seconds
-                    // Trigger emergency
-                    Toast.makeText(this, "🚨 Emergency Alert Triggered!", Toast.LENGTH_LONG).show()
-                    sendEmergencyAlert();
-                }
-                volumePressCount = 0 // reset
-            }
-
-            // Reset if more than 5 seconds passed
-            if (currentTime - firstPressTime > 5000) {
-                volumePressCount = 1
-                firstPressTime = currentTime
-            }
-
-            return true
-        }
-
-        return super.onKeyDown(keyCode, event)
-    }
-
-
 
     override fun onRequestPermissionsResult(
         requestCode: Int,
@@ -214,5 +214,4 @@ class MainActivity : AppCompatActivity() {
             Toast.makeText(this, "Location permission denied", Toast.LENGTH_SHORT).show()
         }
     }
-
 }

@@ -1,3 +1,4 @@
 <resources>
     <string name="app_name">AntiRapeAlertApp</string>
+    <string name="accessibility_description">riggers emergency alert via volume buttons></string>
 </resources>

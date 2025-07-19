@@ -43,20 +43,33 @@ plugins {
 
 
 dependencies {
+    // ✅ Firebase BoM (Manages all versions)
+    implementation(platform("com.google.firebase:firebase-bom:33.1.0"))
 
-    implementation(platform("com.google.firebase:firebase-bom:33.1.0")) // ✅ latest as of July 2025
-    implementation("com.google.firebase:firebase-database-ktx:20.3.0")
-    implementation("com.google.firebase:firebase-auth-ktx:22.3.0")
-    implementation(libs.androidx.core.ktx)
+    // ✅ Firebase services
+    implementation("com.google.firebase:firebase-auth-ktx")
+    implementation("com.google.firebase:firebase-database-ktx")
+    implementation("com.google.firebase:firebase-storage-ktx")
+
+    // ✅ GeoFire for proximity-based alerts
+    implementation("com.firebase:geofire-android:3.1.0")
+
+    // ✅ Location services
+    implementation("com.google.android.gms:play-services-location:21.0.1")
+
+    // ✅ AndroidX
+    implementation("androidx.core:core-ktx:1.12.0")
+    implementation("androidx.appcompat:appcompat:1.6.1")
     implementation(libs.androidx.lifecycle.runtime.ktx)
-    implementation(libs.androidx.activity.compose)
+
+    // ✅ Jetpack Compose (Optional UI libs)
     implementation(platform(libs.androidx.compose.bom))
     implementation(libs.androidx.ui)
-    implementation("com.google.android.gms:play-services-location:21.0.1")
-    implementation("androidx.appcompat:appcompat:1.6.1")
     implementation(libs.androidx.ui.graphics)
     implementation(libs.androidx.ui.tooling.preview)
     implementation(libs.androidx.material3)
+
+    // ✅ Testing
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)

@@ -4,5 +4,7 @@ data class User(
     val name: String = "",
     val email: String = "",
     val aadhaar: String = "",
-    val profileImage: String = ""
+    val profileImage: String = "",
+    val lastLatitude: Double,
+    val lastLongitude: Double
 )
